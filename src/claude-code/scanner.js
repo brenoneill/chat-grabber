@@ -77,11 +77,10 @@ export async function* scanSessions(root) {
         }
       }
 
-      const projectFolder = path.basename(path.dirname(filePath));
       yield {
         path: filePath,
         sessionId: sessionId || path.basename(filePath, '.jsonl'),
-        projectFolder,
+        projectFolder: cwd ? path.basename(cwd) : null,
         cwd,
         gitBranch,
         version,

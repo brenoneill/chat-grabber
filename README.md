@@ -65,7 +65,7 @@ A `tool:` filter is required; everything else is optional.
 | `tool`    | `:` `=`                | Required. One of `claude-code` or `cursor`.                             |
 | `branch`  | `:` `=`                | Exact branch name or glob (`*` matches one path segment, `**` matches across `/`). Case-insensitive. For Cursor this is the branch when the session was created; it does not track later branch switches. |
 | `cwd`     | `:` `=`                | Case-insensitive substring of the session's working directory.          |
-| `project` | `:` `=`                | Exact project folder match. **Claude Code:** the encoded directory under `~/.claude/projects` (e.g. `-Users-bren-projectA`). **Cursor:** the basename of the workspace folder (e.g. `projectA`). |
+| `project` | `:` `=`                | Exact match of the project folder basename (the last path segment of `cwd`, e.g. `projectA` for `/Users/bren/projectA`). Use `cwd:` for a case-insensitive substring match on the full path. |
 | `session` | `:` `=`                | Session-id prefix match.                                                |
 | `version` | `:` `=`                | Exact Claude Code version string. Not supported for `tool:cursor` (no per-session client version is recorded). |
 | `date`    | `:` `=` `>` `>=` `<` `<=` | ISO date (`YYYY-MM-DD`). Comparisons use the session's `startedAt`.  |
