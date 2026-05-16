@@ -1,5 +1,6 @@
 # convoptics
 
+[![npm version](https://img.shields.io/npm/v/convoptics.svg)](https://www.npmjs.com/package/convoptics)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Convoptics scans your local Claude Code and Cursor history, filters sessions
@@ -9,12 +10,11 @@ Markdown transcripts.
 ## Quick start
 
 ```bash
-# Run directly from the repo
-node bin/convoptics.js tool:claude-code branch:feature/payments
-node bin/convoptics.js tool:cursor branch:feature/payments
+# Run once without installing
+npx convoptics tool:claude-code branch:feature/payments
 
-# Or link it once and use the global command
-npm link
+# Or install globally and use the `convoptics` command
+npm install -g convoptics
 convoptics tool:claude-code branch:feature/payments
 convoptics tool:cursor cwd:projectA
 ```
@@ -38,9 +38,19 @@ Output (defaults to your Downloads folder):
 Requires Node.js 18 or newer.
 
 ```bash
-git clone <repo> && cd convoptics
+# Global install — exposes the `convoptics` command
+npm install -g convoptics
+
+# Or run on demand without installing
+npx convoptics --help
+```
+
+### From source
+
+```bash
+git clone https://github.com/brenoneill/convoptics.git && cd convoptics
 npm install
-npm link        # optional: exposes `convoptics` globally
+npm link        # optional: exposes `convoptics` globally from your checkout
 ```
 
 Runtime dependencies:
