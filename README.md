@@ -2,19 +2,21 @@
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Convoptics scans your local Claude Code history, filters sessions with a small
-`key:value` query language, and exports the matches as clean Markdown
-transcripts.
+Convoptics scans your local Claude Code and Cursor history, filters sessions
+with a small `key:value` query language, and exports the matches as clean
+Markdown transcripts.
 
 ## Quick start
 
 ```bash
 # Run directly from the repo
 node bin/convoptics.js tool:claude-code branch:feature/payments
+node bin/convoptics.js tool:cursor branch:feature/payments
 
 # Or link it once and use the global command
 npm link
 convoptics tool:claude-code branch:feature/payments
+convoptics tool:cursor cwd:projectA
 ```
 
 Output (defaults to your Downloads folder):
@@ -41,7 +43,12 @@ npm install
 npm link        # optional: exposes `convoptics` globally
 ```
 
-There is one runtime dependency: [`commander`](https://www.npmjs.com/package/commander).
+Runtime dependencies:
+- [`commander`](https://www.npmjs.com/package/commander) for argv parsing.
+- [`better-sqlite3`](https://www.npmjs.com/package/better-sqlite3) to read
+  Cursor's SQLite databases. This is a native module; `npm install` will
+  download a prebuilt binary for common platforms or compile from source if
+  needed (which requires Python + a C++ toolchain).
 
 ## Usage
 
@@ -55,14 +62,14 @@ A `tool:` filter is required; everything else is optional.
 
 | Key       | Operator(s)            | Meaning                                                                 |
 |-----------|------------------------|-------------------------------------------------------------------------|
-| `tool`    | `:` `=`                | Required. Currently only `claude-code`.                                 |
-| `branch`  | `:` `=`                | Exact branch name or glob (`*` matches one path segment, `**` matches across `/`). Case-insensitive. |
+| `tool`    | `:` `=`                | Required. One of `claude-code` or `cursor`.                             |
+| `branch`  | `:` `=`                | Exact branch name or glob (`*` matches one path segment, `**` matches across `/`). Case-insensitive. For Cursor this is the branch when the session was created; it does not track later branch switches. |
 | `cwd`     | `:` `=`                | Case-insensitive substring of the session's working directory.          |
-| `project` | `:` `=`                | Exact project folder name (the encoded directory under `~/.claude/projects`). |
+| `project` | `:` `=`                | Exact project folder match. **Claude Code:** the encoded directory under `~/.claude/projects` (e.g. `-Users-bren-projectA`). **Cursor:** the basename of the workspace folder (e.g. `projectA`). |
 | `session` | `:` `=`                | Session-id prefix match.                                                |
-| `version` | `:` `=`                | Exact Claude Code version string.                                       |
+| `version` | `:` `=`                | Exact Claude Code version string. Not supported for `tool:cursor` (no per-session client version is recorded). |
 | `date`    | `:` `=` `>` `>=` `<` `<=` | ISO date (`YYYY-MM-DD`). Comparisons use the session's `startedAt`.  |
-| `diffs`   | `:` `=`                | `diffs` (default) keeps full file-edit content; `no-diffs` redacts `Edit`, `MultiEdit`, `Write`, and `NotebookEdit` inputs to a line-count summary so transcripts can be shared without leaking source. |
+| `diffs`   | `:` `=`                | `diffs` (default) keeps full file-edit content; `no-diffs` redacts file edits to a placeholder so transcripts can be shared without leaking source. For Claude Code this targets `Edit`/`MultiEdit`/`Write`/`NotebookEdit` tool inputs; for Cursor it targets the per-bubble `editTrailContexts`, `fileDiffTrajectories`, `gitDiffs`, `humanChanges`, `diffsSinceLastApply`, and `assistantSuggestedDiffs` fields. |
 
 Repeating a key creates an OR: `branch:main branch:feature/*` matches sessions on
 either branch. Different keys combine with AND.
@@ -71,13 +78,13 @@ either branch. Different keys combine with AND.
 
 | Flag                | Description                                              |
 |---------------------|----------------------------------------------------------|
-| `--root <path>`     | Override the Claude Code projects root (default `~/.claude/projects`). |
+| `--root <path>`     | Override the tool's data root. Default for `tool:claude-code` is `~/.claude/projects`. Default for `tool:cursor` is `~/Library/Application Support/Cursor/User` on macOS, `~/.config/Cursor/User` on Linux, `%APPDATA%/Cursor/User` on Windows. |
 | `--out <dir>`       | Override the output directory (default: `~/Downloads/convos-<timestamp>`). |
 | `--dry-run`         | List matches without writing files.                      |
-| `--json`            | Emit raw JSONL of matching sessions to stdout instead of Markdown. |
+| `--json`            | Emit raw session data to stdout instead of Markdown. For Claude Code, the original JSONL; for Cursor, one JSON object per line with session metadata. |
 | `--limit <n>`       | Stop after N matches.                                    |
 | `--full`            | Do not truncate large tool results in the Markdown output. |
-| `--output-only`     | Print a Markdown token + cost summary table to stdout. Skips writing transcripts. |
+| `--output-only`     | Print a Markdown token + cost summary table to stdout. Skips writing transcripts. **Claude Code only** — Cursor sessions do not record reliable token counts, so this flag is rejected with `tool:cursor`. |
 | `-v`, `--verbose`   | Show scan progress on stderr.                            |
 
 ### Examples
@@ -103,6 +110,9 @@ convoptics tool:claude-code session:a1b2 diffs:no-diffs
 
 # Just see how many tokens / how much money a query covers (no files written)
 convoptics tool:claude-code branch:working date>=2026-05-12 --output-only
+
+# All Cursor sessions for a project, with secrets in edits redacted
+convoptics tool:cursor cwd:projectA diffs:no-diffs
 ```
 
 > **Shell quoting.** Quote glob patterns (`'branch:feature/*'`) so the shell
@@ -112,43 +122,74 @@ convoptics tool:claude-code branch:working date>=2026-05-12 --output-only
 
 ## How it works
 
-Claude Code writes one `.jsonl` file per session into
-`~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`. Each line is a JSON
-record: a user turn, an assistant turn, or a `summary` row. Convoptics is a
-streaming pipeline over those files.
+Each tool has its own scanner + exporter under `src/<tool>/`. The CLI parses
+the query, picks the adapter based on `tool:`, and pipes sessions through a
+shared matcher into the adapter's exporter.
 
 ```
 ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
 │ scanner  │ -> │  query   │ -> │ matcher  │ -> │ exporter │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘
-   walk           parse argv      filter spec       per-session
-   *.jsonl        into a spec     applied to        Markdown +
-   extract                        each session      index
-   metadata
+│ (per     │    │          │    │          │    │ (per     │
+│  tool)   │    │ parse    │    │ filter   │    │  tool)   │
+└──────────┘    │ argv     │    │ spec     │    └──────────┘
+                │ into     │    │ applied  │       per-session
+                │ a spec   │    │ to each  │       Markdown +
+                └──────────┘    │ session  │       index
+                                └──────────┘
 ```
+
+**Claude Code** writes one `.jsonl` file per session into
+`~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`. The Claude Code scanner
+streams those files line-by-line, extracting metadata only; the exporter
+re-streams them to render Markdown.
+
+**Cursor** stores sessions across SQLite databases: a global
+`globalStorage/state.vscdb` holds session headers (`composerData:<uuid>`) and
+individual message bubbles (`bubbleId:<uuid>:<bubbleId>`), and one
+`workspaceStorage/<hash>/state.vscdb` per workspace holds the registry that
+joins each composer to its `cwd` (via the sibling `workspace.json`) and
+`createdOnBranch`. The Cursor scanner reads the workspace registries first to
+build that lookup, then walks the global DB; the exporter re-opens the global
+DB to load bubbles in conversation order. See
+[docs/cursor-schema.md](docs/cursor-schema.md) for the on-disk layout this
+adapter is pinned against.
 
 ### Modules
 
-- [src/cli.js](src/cli.js) — argv parsing, wiring of the pipeline, output. Uses
-  a small in-process concurrency limiter (`pAll`, default 8) to export
-  sessions in parallel.
+- [src/cli.js](src/cli.js) — argv parsing, adapter dispatch, output. Uses a
+  small in-process concurrency limiter (`pAll`, default 8) to export sessions
+  in parallel.
 - [src/query.js](src/query.js) — `parseQuery(argv)` turns tokens like
   `branch:main` and `date>=2026-05-01` into a structured filter spec. Repeated
-  keys accumulate into arrays (OR). Validates keys, operators, and the
-  required `tool` filter.
-- [src/scanner.js](src/scanner.js) — async generator. Streams every `.jsonl`
-  under the root with `readline`, extracting only metadata
-  (`sessionId`, `cwd`, `gitBranch`, `version`, `startedAt`, `endedAt`,
-  `summary`, `messageCount`, `malformedCount`). The full message content is
-  never buffered.
+  keys accumulate into arrays (OR). Validates keys, operators, the required
+  `tool` filter, and rejects per-tool-incompatible keys.
 - [src/matcher.js](src/matcher.js) — `match(filter, session)` applies the spec.
-  Branch globs are compiled to anchored, case-insensitive regexes:
+  Tool-agnostic: operates on the common session shape that every adapter
+  yields. Branch globs are compiled to anchored, case-insensitive regexes:
   `*` becomes `[^/]*`, `**` becomes `.*`, and regex metacharacters in the rest
   of the pattern are escaped.
-- [src/exporter.js](src/exporter.js) — for each match, re-streams the JSONL
-  and writes a Markdown transcript. Writes go to a `.tmp` file first and are
-  renamed atomically on success, so an interrupted run never leaves partial
-  exports.
+- [src/claude-code/scanner.js](src/claude-code/scanner.js) — async generator.
+  Streams every `.jsonl` under `~/.claude/projects` with `readline`, extracting
+  only metadata (`sessionId`, `cwd`, `gitBranch`, `version`, `startedAt`,
+  `endedAt`, `summary`, `messageCount`, `malformedCount`, plus per-model token
+  usage). Full message content is never buffered.
+- [src/claude-code/exporter.js](src/claude-code/exporter.js) — for each match,
+  re-streams the JSONL and writes a Markdown transcript. Writes go to a `.tmp`
+  file first and are renamed atomically on success, so an interrupted run
+  never leaves partial exports.
+- [src/claude-code/pricing.js](src/claude-code/pricing.js) — USD-per-million
+  pricing table for `--output-only` (Claude Code only).
+- [src/cursor/scanner.js](src/cursor/scanner.js) — opens each
+  `workspaceStorage/<hash>/state.vscdb` read-only with `better-sqlite3`, builds
+  a `composerId → {cwd, branch, name}` registry, then streams
+  `composerData:<uuid>` rows from the global DB. Token counts are emitted as
+  zero — Cursor's per-bubble `tokenCount` is unreliable (~96% report zero).
+- [src/cursor/exporter.js](src/cursor/exporter.js) — re-opens the global DB,
+  loads `bubbleId:<sessionId>:*` rows for the session, orders them by the
+  header's `conversation[]` cache (with leftover bubbles appended), and
+  renders each `type:1`/`type:2` bubble as Markdown. Same atomic
+  `.tmp` → rename pattern as the Claude Code exporter. Warns to stderr if any
+  bubble has an unexpected schema version (`_v` ≠ 3).
 
 ### Filename scheme
 
@@ -189,6 +230,10 @@ Token counts are summed across every assistant turn that reports a `usage`
 block in the source JSONL.
 
 ### Token usage and cost (`--output-only`)
+
+> **Claude Code only.** Cursor stores per-bubble `tokenCount` values that are
+> `{0,0}` for ~96% of assistant bubbles, so cost reporting would be misleading.
+> The flag is rejected with `tool:cursor` until this changes upstream.
 
 `--output-only` skips writing Markdown and instead prints a Markdown report to
 stdout: one row per matching session, followed by a totals table.
@@ -279,14 +324,18 @@ summary` rows in match order.
 ## Project layout
 
 ```
-bin/convoptics.js         # entry point shim
-src/cli.js                # argv → pipeline
-src/query.js              # parseQuery
-src/scanner.js            # walkJsonl + scanSessions (async generators)
-src/matcher.js            # match + glob compilation
-src/exporter.js           # exportSession + Markdown rendering
-test/                     # node:test suites + fixtures
-.github/workflows/ci.yml  # Node 18 + 20 matrix
+bin/convoptics.js               # entry point shim
+src/cli.js                      # argv → adapter dispatch
+src/query.js                    # parseQuery
+src/matcher.js                  # tool-agnostic match + glob compilation
+src/claude-code/scanner.js      # walkJsonl + scanSessions (async generators)
+src/claude-code/exporter.js     # exportSession + Markdown rendering
+src/claude-code/pricing.js      # USD-per-million pricing for --output-only
+src/cursor/scanner.js           # SQLite-backed scanSessions + defaultCursorRoot
+src/cursor/exporter.js          # exportSession (bubble rendering)
+docs/cursor-schema.md           # Cursor on-disk schema reference
+test/                           # node:test suites + fixtures
+.github/workflows/ci.yml        # Node 18 + 20 matrix
 ```
 
 ## Running the tests
@@ -300,10 +349,17 @@ The suite uses Node's built-in `node:test` runner against fixtures under
 
 ## Adding support for other tools
 
-The `tool:` key reserves the namespace for future adapters. A second adapter
-would need its own scanner (producing the same session metadata shape) and an
-exporter capable of rendering that tool's transcript format. The matcher and
-query layers are tool-agnostic.
+The `tool:` key dispatches to an adapter under `src/<tool>/`. Each adapter
+ships its own `scanner.js` (an async generator yielding the common session
+shape — see the Modules section) and `exporter.js` (writing Markdown for one
+session into the output directory). Register the adapter in the `ADAPTERS`
+map in [src/cli.js](src/cli.js), add the tool name to `VALID_TOOLS` in
+[src/query.js](src/query.js), and declare any per-tool incompatible filter
+keys in `TOOL_UNSUPPORTED_KEYS`. The matcher and query layers are
+tool-agnostic and don't need changes.
+
+Two adapters ship today: `claude-code` (JSONL files under `~/.claude/projects`)
+and `cursor` (SQLite databases under Cursor's user-data directory).
 
 ## License
 

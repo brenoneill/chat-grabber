@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import test from 'node:test';
-import { PRICING, resolveModel, costForTokens, costForSession } from '../src/pricing.js';
+import { PRICING, resolveModel, costForTokens, costForSession } from '../src/claude-code/pricing.js';
 
 test('resolveModel returns exact match when present', () => {
   const r = resolveModel('claude-opus-4-7');

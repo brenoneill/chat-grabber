@@ -4,10 +4,29 @@ import os from 'node:os';
 import readline from 'node:readline';
 import { Command } from 'commander';
 import { parseQuery } from './query.js';
-import { scanSessions } from './scanner.js';
 import { match } from './matcher.js';
-import { exportSession } from './exporter.js';
-import { costForSession, resolveModel } from './pricing.js';
+import * as claudeCodeAdapter from './claude-code/scanner.js';
+import { exportSession as exportClaudeCodeSession } from './claude-code/exporter.js';
+import * as cursorAdapter from './cursor/scanner.js';
+import { exportSession as exportCursorSession } from './cursor/exporter.js';
+import { costForSession, resolveModel } from './claude-code/pricing.js';
+
+const ADAPTERS = {
+  'claude-code': {
+    scan: claudeCodeAdapter.scanSessions,
+    exportSession: exportClaudeCodeSession,
+    defaultRoot: () => path.join(os.homedir(), '.claude', 'projects'),
+    rootLabel: 'Claude Code projects root',
+    supportsCost: true,
+  },
+  cursor: {
+    scan: cursorAdapter.scanSessions,
+    exportSession: exportCursorSession,
+    defaultRoot: () => cursorAdapter.defaultCursorRoot(),
+    rootLabel: 'Cursor user-data root',
+    supportsCost: false,
+  },
+};
 
 function pAll(items, fn, concurrency) {
   const results = [];
@@ -40,6 +59,11 @@ async function streamJsonlToStdout(session) {
   } finally {
     await stream.close();
   }
+}
+
+function emitCursorSessionJson(session) {
+  const { _cursor, ...publicFields } = session;
+  process.stdout.write(`${JSON.stringify(publicFields)}\n`);
 }
 
 function formatSummary(session) {
@@ -137,14 +161,25 @@ async function main() {
     process.exit(1);
   }
 
-  const root = opts.root ? path.resolve(opts.root) : path.join(os.homedir(), '.claude', 'projects');
+  const adapter = ADAPTERS[filterSpec.tool];
+  if (!adapter) {
+    console.error(`Error: no adapter registered for tool:${filterSpec.tool}`);
+    process.exit(1);
+  }
+
+  if (opts.outputOnly && !adapter.supportsCost) {
+    console.error(`Error: --output-only is not supported for tool:${filterSpec.tool} (token usage is not exported)`);
+    process.exit(1);
+  }
+
+  const root = opts.root ? path.resolve(opts.root) : adapter.defaultRoot();
   try {
     const rootStat = await fs.stat(root);
     if (!rootStat.isDirectory()) {
       throw new Error('not a directory');
     }
   } catch {
-    console.error(`Error: Claude Code projects root does not exist: ${root}`);
+    console.error(`Error: ${adapter.rootLabel} does not exist: ${root}`);
     process.exit(2);
   }
 
@@ -155,7 +190,7 @@ async function main() {
   const matches = [];
   let scanned = 0;
 
-  for await (const session of scanSessions(root)) {
+  for await (const session of adapter.scan(root)) {
     scanned += 1;
     if (opts.verbose) {
       console.error(`scanned ${session.path}`);
@@ -182,7 +217,11 @@ async function main() {
 
   if (opts.json) {
     for (const session of matches) {
-      await streamJsonlToStdout(session);
+      if (filterSpec.tool === 'cursor') {
+        emitCursorSessionJson(session);
+      } else {
+        await streamJsonlToStdout(session);
+      }
     }
     console.error(`Emitted JSONL for ${matches.length} matching sessions from ${scanned} scanned.`);
     process.exit(0);
@@ -203,7 +242,7 @@ async function main() {
   let exportResults;
   try {
     const exportOpts = { full: opts.full, noDiffs: filterSpec.diffs === 'no-diffs' };
-    exportResults = await pAll(matches, (session) => exportSession(session, outDir, exportOpts), 8);
+    exportResults = await pAll(matches, (session) => adapter.exportSession(session, outDir, exportOpts), 8);
   } catch (error) {
     console.error(`Error exporting sessions: ${error.message}`);
     process.exit(3);

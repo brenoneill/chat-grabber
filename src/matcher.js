@@ -19,10 +19,6 @@ function isoDatePart(value) {
 }
 
 export function match(filter, session) {
-  if (filter.tool && filter.tool !== 'claude-code') {
-    return false;
-  }
-
   if (filter.branch) {
     if (!session.gitBranch) {
       return false;

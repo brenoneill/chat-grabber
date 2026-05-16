@@ -3,7 +3,7 @@ import test from 'node:test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { scanSessions } from '../src/scanner.js';
+import { scanSessions } from '../src/claude-code/scanner.js';
 
 test('scanSessions aggregates token usage across assistant turns', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-scan-'));

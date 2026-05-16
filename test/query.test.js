@@ -39,3 +39,22 @@ test('parseQuery throws for invalid token', () => {
     message: /Missing required filter: tool/,
   });
 });
+
+test('parseQuery accepts tool:cursor', () => {
+  const spec = parseQuery(['tool:cursor', 'branch:main', 'cwd:projectA', 'project:projectA']);
+  assert.strictEqual(spec.tool, 'cursor');
+  assert.deepStrictEqual(spec.branch, ['main']);
+  assert.deepStrictEqual(spec.project, ['projectA']);
+});
+
+test('parseQuery rejects unknown tools', () => {
+  assert.throws(() => parseQuery(['tool:vscode']), {
+    message: /Unknown tool: vscode/,
+  });
+});
+
+test('parseQuery rejects version: when tool:cursor', () => {
+  assert.throws(() => parseQuery(['tool:cursor', 'version:1.0.0']), {
+    message: /Filter "version:" is not supported for tool:cursor/,
+  });
+});

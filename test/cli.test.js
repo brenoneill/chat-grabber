@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
+import { buildCursorRoot } from './cursor-fixtures.js';
 
 const BIN = path.resolve('bin/convoptics.js');
 
@@ -54,6 +55,86 @@ test('--output-only prints per-session and totals tables with cost', async () =>
   assert(stdout.includes('## Totals'), 'missing totals heading');
   // Opus 4-7 input is $5/MTok; 1M input tokens => $5.00
   assert(stdout.includes('$5.00'), `expected $5.00 in output, got:\n${stdout}`);
+});
+
+test('cursor: exports markdown for matching sessions', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cli-cursor-'));
+  await buildCursorRoot(root, {
+    workspaces: [
+      {
+        folder: '/Users/bren/projectA',
+        composers: [
+          {
+            composerId: 'clic1',
+            name: 'cli test',
+            branch: 'main',
+            createdAt: 1747400000000,
+            lastUpdatedAt: 1747400060000,
+          },
+        ],
+      },
+    ],
+    composers: {
+      clic1: {
+        header: {
+          composerId: 'clic1',
+          createdAt: 1747400000000,
+          lastUpdatedAt: 1747400060000,
+          conversation: [{ bubbleId: 'b1' }, { bubbleId: 'b2' }],
+        },
+        bubbles: [
+          { bubbleId: 'b1', type: 1, text: 'hi', _v: 3 },
+          { bubbleId: 'b2', type: 2, text: 'hello', _v: 3 },
+        ],
+      },
+    },
+  });
+  const outDir = path.join(root, 'out');
+  const { code, stderr } = await runCli([
+    '--root', root, '--out', outDir, 'tool:cursor', 'branch:main',
+  ]);
+  assert.strictEqual(code, 0, `exit ${code}; stderr=${stderr}`);
+  const files = (await fs.readdir(outDir)).filter((f) => f.endsWith('.md'));
+  assert.strictEqual(files.length, 2, `expected 1 session + _index.md, got ${files.join(', ')}`);
+  assert(files.includes('_index.md'));
+  const session = files.find((f) => f !== '_index.md');
+  const contents = await fs.readFile(path.join(outDir, session), 'utf8');
+  assert(contents.includes('sessionId: "clic1"'));
+  assert(contents.includes('hello'));
+});
+
+test('cursor: --output-only is rejected', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cli-cursor-rej-'));
+  await buildCursorRoot(root, { workspaces: [] });
+  const { code, stderr } = await runCli(['--root', root, '--output-only', 'tool:cursor']);
+  assert.strictEqual(code, 1);
+  assert(stderr.includes('--output-only is not supported for tool:cursor'));
+});
+
+test('cursor: project: filter matches workspace folder basename', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cli-cursor-proj-'));
+  await buildCursorRoot(root, {
+    workspaces: [
+      {
+        folder: '/Users/bren/projectA',
+        composers: [{ composerId: 'pA1', branch: 'main', createdAt: 1747400000000, lastUpdatedAt: 1747400000000 }],
+      },
+      {
+        folder: '/Users/bren/projectB',
+        composers: [{ composerId: 'pB1', branch: 'main', createdAt: 1747400000000, lastUpdatedAt: 1747400000000 }],
+      },
+    ],
+    composers: {
+      pA1: { header: { composerId: 'pA1', createdAt: 1747400000000, lastUpdatedAt: 1747400000000, conversation: [] }, bubbles: [] },
+      pB1: { header: { composerId: 'pB1', createdAt: 1747400000000, lastUpdatedAt: 1747400000000, conversation: [] }, bubbles: [] },
+    },
+  });
+  const { code, stdout } = await runCli([
+    '--root', root, '--dry-run', 'tool:cursor', 'project:projectA',
+  ]);
+  assert.strictEqual(code, 0);
+  assert(stdout.includes('pA1'));
+  assert(!stdout.includes('pB1'));
 });
 
 test('--output-only warns on unpriced models but still exits 0', async () => {

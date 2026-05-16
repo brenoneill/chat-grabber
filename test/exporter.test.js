@@ -3,7 +3,7 @@ import test from 'node:test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { exportSession } from '../src/exporter.js';
+import { exportSession } from '../src/claude-code/exporter.js';
 
 const fixturePath = path.join('test', 'fixtures', 'projects', '-Users-bren-projectA', 'session-a1b2.jsonl');
 

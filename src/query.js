@@ -1,4 +1,8 @@
 const VALID_KEYS = new Set(['tool', 'branch', 'cwd', 'project', 'session', 'version', 'date', 'diffs']);
+const VALID_TOOLS = new Set(['claude-code', 'cursor']);
+const TOOL_UNSUPPORTED_KEYS = {
+  cursor: new Set(['version']),
+};
 const DATE_OPERATORS = new Set([':', '=', '>=', '<=', '>', '<']);
 const DIFFS_VALUES = new Set(['diffs', 'no-diffs']);
 
@@ -75,6 +79,18 @@ export function parseQuery(argv) {
 
   if (!spec.tool) {
     throw new Error('Missing required filter: tool');
+  }
+  if (!VALID_TOOLS.has(spec.tool)) {
+    throw new Error(`Unknown tool: ${spec.tool} (expected one of ${[...VALID_TOOLS].join(', ')})`);
+  }
+
+  const unsupported = TOOL_UNSUPPORTED_KEYS[spec.tool];
+  if (unsupported) {
+    for (const key of unsupported) {
+      if (spec[key] && spec[key].length > 0) {
+        throw new Error(`Filter "${key}:" is not supported for tool:${spec.tool}`);
+      }
+    }
   }
 
   // Normalize empty arrays to undefined for easier matcher handling.
