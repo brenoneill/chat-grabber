@@ -6,7 +6,7 @@ import os from 'node:os';
 import { scanSessions } from '../src/claude-code/scanner.js';
 
 test('scanSessions aggregates token usage across assistant turns', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-scan-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-scan-'));
   const projectDir = path.join(root, '-Users-bren-tokens');
   await fs.mkdir(projectDir, { recursive: true });
   const lines = [

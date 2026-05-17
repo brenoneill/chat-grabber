@@ -1,9 +1,9 @@
 {
-  "name": "convoptics",
+  "name": "chat-grabber",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "convoptics": "./bin/convoptics.js"
+    "chat-grabber": "./bin/chat-grabber.js"
   },
   "engines": {
     "node": ">=18"
@@ -15,8 +15,22 @@
     "better-sqlite3": "^12.10.0",
     "commander": "^12.0.0"
   },
+  "files": [
+    "bin/",
+    "src/",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brenoneill/chat-grabber.git"
+  },
+  "bugs": {
+    "url": "https://github.com/brenoneill/chat-grabber/issues"
+  },
+  "homepage": "https://github.com/brenoneill/chat-grabber#readme",
   "keywords": [],
-  "author": "",
+  "author": "Brendan O'Neill <brendanoneill94@gmail.com>",
   "license": "MIT",
   "description": "A CLI for extracting Claude Code conversations by query."
 }

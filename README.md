@@ -1,28 +1,28 @@
-# convoptics
+# chat-grabber
 
+[![npm version](https://img.shields.io/npm/v/chat-grabber.svg)](https://www.npmjs.com/package/chat-grabber)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Convoptics scans your local Claude Code and Cursor history, filters sessions
+chat-grabber scans your local Claude Code and Cursor history, filters sessions
 with a small `key:value` query language, and exports the matches as clean
 Markdown transcripts.
 
 ## Quick start
 
 ```bash
-# Run directly from the repo
-node bin/convoptics.js tool:claude-code branch:feature/payments
-node bin/convoptics.js tool:cursor branch:feature/payments
+# Run once without installing
+npx chat-grabber tool:claude-code branch:feature/payments
 
-# Or link it once and use the global command
-npm link
-convoptics tool:claude-code branch:feature/payments
-convoptics tool:cursor cwd:projectA
+# Or install globally and use the `chat-grabber` command
+npm install -g chat-grabber
+chat-grabber tool:claude-code branch:feature/payments
+chat-grabber tool:cursor cwd:projectA
 ```
 
 Output (defaults to your Downloads folder):
 
 ```text
-~/Downloads/convos-2026-05-14T143000/
+~/Downloads/chats-2026-05-14T143000/
   ├── 2026-05-12_a3f9c1d0_feature-payments.md
   ├── 2026-05-13_b7c2e840_feature-payments.md
   └── _index.md
@@ -38,9 +38,19 @@ Output (defaults to your Downloads folder):
 Requires Node.js 18 or newer.
 
 ```bash
-git clone <repo> && cd convoptics
+# Global install — exposes the `chat-grabber` command
+npm install -g chat-grabber
+
+# Or run on demand without installing
+npx chat-grabber --help
+```
+
+### From source
+
+```bash
+git clone https://github.com/brenoneill/chat-grabber.git && cd chat-grabber
 npm install
-npm link        # optional: exposes `convoptics` globally
+npm link        # optional: exposes `chat-grabber` globally from your checkout
 ```
 
 Runtime dependencies:
@@ -53,7 +63,7 @@ Runtime dependencies:
 ## Usage
 
 ```bash
-convoptics [filters...] [options]
+chat-grabber [filters...] [options]
 ```
 
 A `tool:` filter is required; everything else is optional.
@@ -79,7 +89,7 @@ either branch. Different keys combine with AND.
 | Flag                | Description                                              |
 |---------------------|----------------------------------------------------------|
 | `--root <path>`     | Override the tool's data root. Default for `tool:claude-code` is `~/.claude/projects`. Default for `tool:cursor` is `~/Library/Application Support/Cursor/User` on macOS, `~/.config/Cursor/User` on Linux, `%APPDATA%/Cursor/User` on Windows. |
-| `--out <dir>`       | Override the output directory (default: `~/Downloads/convos-<timestamp>`). |
+| `--out <dir>`       | Override the output directory (default: `~/Downloads/chats-<timestamp>`). |
 | `--dry-run`         | List matches without writing files.                      |
 | `--json`            | Emit raw session data to stdout instead of Markdown. For Claude Code, the original JSONL; for Cursor, one JSON object per line with session metadata. |
 | `--limit <n>`       | Stop after N matches.                                    |
@@ -91,28 +101,28 @@ either branch. Different keys combine with AND.
 
 ```bash
 # Everything on `working` in the last 2 days (today = 2026-05-14)
-convoptics tool:claude-code branch:working date>=2026-05-12
+chat-grabber tool:claude-code branch:working date>=2026-05-12
 
 # All feature branches, a single day
-convoptics tool:claude-code 'branch:feature/*' date:2026-05-12
+chat-grabber tool:claude-code 'branch:feature/*' date:2026-05-12
 
 # A specific session prefix, full tool output, custom out dir
-convoptics tool:claude-code session:a1b2 --full --out ./payments-debug
+chat-grabber tool:claude-code session:a1b2 --full --out ./payments-debug
 
 # Preview without writing anything
-convoptics tool:claude-code branch:main --dry-run -v
+chat-grabber tool:claude-code branch:main --dry-run -v
 
 # Pipe raw JSONL to another tool
-convoptics tool:claude-code branch:working --json | jq '.message.role'
+chat-grabber tool:claude-code branch:working --json | jq '.message.role'
 
 # Share a session externally without exposing source code
-convoptics tool:claude-code session:a1b2 diffs:no-diffs
+chat-grabber tool:claude-code session:a1b2 diffs:no-diffs
 
 # Just see how many tokens / how much money a query covers (no files written)
-convoptics tool:claude-code branch:working date>=2026-05-12 --output-only
+chat-grabber tool:claude-code branch:working date>=2026-05-12 --output-only
 
 # All Cursor sessions for a project, with secrets in edits redacted
-convoptics tool:cursor cwd:projectA diffs:no-diffs
+chat-grabber tool:cursor cwd:projectA diffs:no-diffs
 ```
 
 > **Shell quoting.** Quote glob patterns (`'branch:feature/*'`) so the shell
@@ -260,7 +270,7 @@ The `model` column shows each session's *dominant* model — the one with the
 most input + output tokens — and appends `(+N)` if other models also appeared
 in that session. Cost is computed per-model and summed.
 
-Redirect to a file for sharing: `convoptics ... --output-only > usage.md`.
+Redirect to a file for sharing: `chat-grabber ... --output-only > usage.md`.
 
 #### Pricing table
 
@@ -324,7 +334,7 @@ summary` rows in match order.
 ## Project layout
 
 ```
-bin/convoptics.js               # entry point shim
+bin/chat-grabber.js               # entry point shim
 src/cli.js                      # argv → adapter dispatch
 src/query.js                    # parseQuery
 src/matcher.js                  # tool-agnostic match + glob compilation

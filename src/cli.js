@@ -136,7 +136,7 @@ function renderOutputOnly(matches) {
 async function main() {
   const program = new Command();
   program
-    .name('convoptics')
+    .name('chat-grabber')
     .description('Extract Claude Code conversations by query and export Markdown transcripts.')
     .argument('[filters...]', 'filter tokens such as tool:claude-code branch:main date>=2026-05-01')
     .option('--root <path>', 'override ~/.claude/projects')
@@ -186,7 +186,7 @@ async function main() {
   const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '');
   const outDir = opts.out
     ? path.resolve(opts.out)
-    : path.join(os.homedir(), 'Downloads', `convos-${timestamp}`);
+    : path.join(os.homedir(), 'Downloads', `chats-${timestamp}`);
   const matches = [];
   let scanned = 0;
 

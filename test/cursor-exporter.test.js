@@ -8,7 +8,7 @@ import { scanSessions } from '../src/cursor/scanner.js';
 import { buildCursorRoot } from './cursor-fixtures.js';
 
 async function buildAndScan(spec) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cursor-export-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cursor-export-'));
   await buildCursorRoot(root, spec);
   const sessions = [];
   for await (const session of scanSessions(root)) sessions.push(session);
@@ -53,7 +53,7 @@ test('exportSession renders bubbles grouped by role into markdown', async () => 
     },
   });
 
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cursor-out-'));
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cursor-out-'));
   const result = await exportSession(sessions[0], outDir, { full: true });
   const contents = await fs.readFile(path.join(outDir, result.filename), 'utf8');
 
@@ -113,7 +113,7 @@ test('exportSession redacts diff fields when noDiffs is true', async () => {
     },
   });
 
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cursor-out-'));
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cursor-out-'));
   const result = await exportSession(sessions[0], outDir, { full: true, noDiffs: true });
   const contents = await fs.readFile(path.join(outDir, result.filename), 'utf8');
 
@@ -157,7 +157,7 @@ test('exportSession includes diff JSON when noDiffs is false', async () => {
     },
   });
 
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cursor-out-'));
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cursor-out-'));
   const result = await exportSession(sessions[0], outDir, { full: true });
   const contents = await fs.readFile(path.join(outDir, result.filename), 'utf8');
 
@@ -196,7 +196,7 @@ test('exportSession warns on unexpected _v values', async () => {
     },
   });
 
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cursor-out-'));
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cursor-out-'));
   const originalWrite = process.stderr.write.bind(process.stderr);
   let captured = '';
   process.stderr.write = (chunk) => {
