@@ -1,9 +1,9 @@
 {
   "name": "chat-grabber",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "bin": {
-    "chat-grabber": "./bin/chat-grabber.js"
+    "chat-grabber": "bin/chat-grabber.js"
   },
   "engines": {
     "node": ">=18"
