@@ -97,12 +97,6 @@ With nothing else, you get every session the tool has on disk. That's usually to
 # On exactly May 12th
 chat-grabber tool:claude-code date:2026-05-12
 
-# After May 12th (inclusive)
-chat-grabber tool:claude-code 'date>=2026-05-12'
-
-# Before May 12th (exclusive)
-chat-grabber tool:claude-code 'date<2026-05-12'
-
 # A two-week window
 chat-grabber tool:claude-code 'date>=2026-05-01' 'date<=2026-05-14'
 ```
