@@ -6,7 +6,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { buildCursorRoot } from './cursor-fixtures.js';
 
-const BIN = path.resolve('bin/convoptics.js');
+const BIN = path.resolve('bin/chat-grabber.js');
 
 function runCli(args, env = {}) {
   return new Promise((resolve) => {
@@ -22,7 +22,7 @@ function runCli(args, env = {}) {
 }
 
 test('--output-only prints per-session and totals tables with cost', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cli-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cli-'));
   const projectDir = path.join(root, '-Users-bren-projectA');
   await fs.mkdir(projectDir, { recursive: true });
   const lines = [
@@ -58,7 +58,7 @@ test('--output-only prints per-session and totals tables with cost', async () =>
 });
 
 test('cursor: exports markdown for matching sessions', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cli-cursor-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cli-cursor-'));
   await buildCursorRoot(root, {
     workspaces: [
       {
@@ -104,7 +104,7 @@ test('cursor: exports markdown for matching sessions', async () => {
 });
 
 test('cursor: --output-only is rejected', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cli-cursor-rej-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cli-cursor-rej-'));
   await buildCursorRoot(root, { workspaces: [] });
   const { code, stderr } = await runCli(['--root', root, '--output-only', 'tool:cursor']);
   assert.strictEqual(code, 1);
@@ -112,7 +112,7 @@ test('cursor: --output-only is rejected', async () => {
 });
 
 test('cursor: project: filter matches workspace folder basename', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cli-cursor-proj-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cli-cursor-proj-'));
   await buildCursorRoot(root, {
     workspaces: [
       {
@@ -138,7 +138,7 @@ test('cursor: project: filter matches workspace folder basename', async () => {
 });
 
 test('--output-only warns on unpriced models but still exits 0', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cli-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cli-'));
   const projectDir = path.join(root, '-Users-bren-future');
   await fs.mkdir(projectDir, { recursive: true });
   const lines = [

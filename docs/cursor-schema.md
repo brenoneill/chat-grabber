@@ -1,6 +1,6 @@
 # Cursor session storage — schema reference
 
-Notes on the Cursor on-disk format the convoptics Cursor adapter is built
+Notes on the Cursor on-disk format the chat-grabber Cursor adapter is built
 against. Cursor's storage is undocumented and changes between releases; this
 file pins what we observed so a future schema-drift bug is fast to diagnose.
 

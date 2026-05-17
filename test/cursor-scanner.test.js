@@ -7,7 +7,7 @@ import { scanSessions } from '../src/cursor/scanner.js';
 import { buildCursorRoot } from './cursor-fixtures.js';
 
 async function mkRoot() {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cursor-scan-'));
+  return fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cursor-scan-'));
 }
 
 test('scanSessions joins workspace registry to global composer rows', async () => {
@@ -93,7 +93,7 @@ test('scanSessions returns orphan sessions with null cwd/branch', async () => {
 });
 
 test('scanSessions returns nothing when global DB is missing', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-cursor-empty-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-cursor-empty-'));
   const sessions = [];
   for await (const session of scanSessions(root)) sessions.push(session);
   assert.strictEqual(sessions.length, 0);

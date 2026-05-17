@@ -1,216 +1,168 @@
-# convoptics
+# chat-grabber
 
-[![npm version](https://img.shields.io/npm/v/convoptics.svg)](https://www.npmjs.com/package/convoptics)
+[![npm version](https://img.shields.io/npm/v/chat-grabber.svg)](https://www.npmjs.com/package/chat-grabber)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Convoptics scans your local Claude Code and Cursor history, filters sessions
-with a small `key:value` query language, and exports the matches as clean
-Markdown transcripts.
+A CLI for pulling Claude Code and Cursor chat history out of your machine and into clean Markdown transcripts you can grep, share, or feed back into an LLM.
 
-## Quick start
+---
+
+## What it is
+
+`chat-grabber` reads the local history that Claude Code and Cursor already keep on disk, filters it with a tiny `key:value` query language, and writes one Markdown file per matching session.
+
+You point it at one of the two tools, narrow down with filters like `branch:` / `project:` / `date>=`, and it drops the matches into `~/Downloads/`.
+
+## How it works
+
+There are three moving parts:
+
+```
+scanner  →  matcher  →  exporter
+(per-tool)              (per-tool)
+```
+
+The **scanner** walks the tool's on-disk history and yields lightweight session metadata. The **matcher** keeps the sessions your query asked for. The **exporter** re-reads each matching session and writes it as Markdown.
+
+### Your first query
+
+Grab every Claude Code session started on or after May 12th, 2026:
+
+```bash
+npx chat-grabber tool:claude-code date>=2026-05-12
+```
+
+That writes one Markdown file per session into a fresh `~/Downloads/chats-<timestamp>/` directory, plus an `_index.md` listing them.
+
+> **Quote the `>=`.** Shells treat `>` as redirection, so wrap any token using `>`, `>=`, `<`, or `<=` in quotes: `'date>=2026-05-12'`. Tokens using `:` or `=` are safe unquoted.
+
+---
+
+## Install
+
+Requires Node.js 18+.
 
 ```bash
 # Run once without installing
-npx convoptics tool:claude-code branch:feature/payments
+npx chat-grabber --help
 
-# Or install globally and use the `convoptics` command
-npm install -g convoptics
-convoptics tool:claude-code branch:feature/payments
-convoptics tool:cursor cwd:projectA
+# Or install globally
+npm install -g chat-grabber
+chat-grabber --help
 ```
 
-Output (defaults to your Downloads folder):
+`better-sqlite3` (used to read Cursor) is a native module. `npm install` downloads a prebuilt binary for common platforms, or compiles from source (needs Python + a C++ toolchain) if no prebuilt is available.
 
-```text
-~/Downloads/convos-2026-05-14T143000/
+> **macOS Downloads prompt.** The first time your terminal writes to `~/Downloads`, macOS asks "Terminal would like to access files in your Downloads folder." Click Allow once. Reading from `~/.claude/projects/` never triggers a prompt.
+
+---
+
+## Queryable properties
+
+Every query is a series of `key:value` (or `key=value`) tokens. One `tool:` token is required; everything else narrows the result set.
+
+| Key       | Operators                 | Claude Code | Cursor | What it matches |
+|-----------|---------------------------|:-----------:|:------:|-----------------|
+| `tool`    | `:` `=`                   | yes         | yes    | Required. `claude-code` or `cursor`. |
+| `date`    | `:` `=` `>` `>=` `<` `<=` | yes         | yes    | ISO date (`YYYY-MM-DD`), compared against the session's `startedAt`. |
+| `project` | `:` `=`                   | yes         | yes    | Exact match of the project folder basename (last segment of `cwd`, e.g. `projectA`). |
+| `cwd`     | `:` `=`                   | yes         | yes    | Case-insensitive substring of the full working directory path. |
+| `branch`  | `:` `=`                   | yes         | yes*   | Exact branch name or glob (`*` = one path segment, `**` = across `/`). Case-insensitive. <br>*Cursor records the branch at session creation only — later switches aren't tracked.* |
+| `session` | `:` `=`                   | yes         | yes    | Session-id prefix match. |
+| `version` | `:` `=`                   | yes         | —      | Exact Claude Code version string. Cursor doesn't record a per-session client version. |
+| `diffs`   | `:` `=`                   | yes         | yes    | `diffs` (default) keeps file edits; `no-diffs` redacts edits to a placeholder so transcripts can be shared without leaking source. |
+
+**Combining tokens.** Repeating the same key creates an OR (`branch:main branch:feature/*`). Different keys combine with AND.
+
+---
+
+## Building a query, step by step
+
+Each step below adds one filter to the last. Use them in any order — they all combine with AND.
+
+### 1. Pick a tool (required)
+
+```bash
+chat-grabber tool:claude-code
+chat-grabber tool:cursor
+```
+
+With nothing else, you get every session the tool has on disk. That's usually too many — start adding filters.
+
+### 2. Narrow by date
+
+`date` is the most useful first filter. All six operators work:
+
+```bash
+# On exactly May 12th
+chat-grabber tool:claude-code date:2026-05-12
+
+# A two-week window
+chat-grabber tool:claude-code 'date>=2026-05-01' 'date<=2026-05-14'
+```
+
+### 3. Add a project
+
+`project:` matches the folder name your session ran in. If your repo lives at `~/code/projectA`, then `project:projectA` matches sessions started there:
+
+```bash
+chat-grabber tool:claude-code 'date>=2026-05-12' project:projectA
+```
+
+Need a looser match (e.g. anything under `~/code/`)? Use `cwd:`, which does a case-insensitive substring match on the full path:
+
+```bash
+chat-grabber tool:claude-code 'date>=2026-05-12' cwd:code/
+```
+
+### 4. Add a branch
+
+```bash
+chat-grabber tool:claude-code 'date>=2026-05-12' project:projectA branch:main
+```
+
+Globs work too. Quote them so the shell doesn't expand `*`:
+
+```bash
+# Any feature branch
+chat-grabber tool:claude-code project:projectA 'branch:feature/*'
+
+# Any nested branch under release/
+chat-grabber tool:claude-code project:projectA 'branch:release/**'
+```
+
+### 5. Combine multiple values with OR
+
+Repeating a key ORs the values. This grabs anything on `main` *or* any feature branch:
+
+```bash
+chat-grabber tool:claude-code project:projectA branch:main 'branch:feature/*'
+```
+
+### 6. Same workflow for Cursor
+
+```bash
+chat-grabber tool:cursor 'date>=2026-05-12' project:projectA
+```
+
+A few keys behave slightly differently for Cursor — see the [Queryable properties](#queryable-properties) table.
+
+---
+
+## Output
+
+By default, output goes to `~/Downloads/chats-<timestamp>/`:
+
+```
+~/Downloads/chats-2026-05-14T143000/
   ├── 2026-05-12_a3f9c1d0_feature-payments.md
   ├── 2026-05-13_b7c2e840_feature-payments.md
   └── _index.md
 ```
 
-> On macOS, the first time your terminal app writes to `~/Downloads` the OS
-> shows a one-time prompt ("Terminal would like to access files in your
-> Downloads folder"). Click Allow once; it won't ask again. Linux and Windows
-> don't prompt. Reading from `~/.claude/projects/` never triggers a prompt.
+Filenames are `<YYYY-MM-DD>_<sessionId[:8]>_<branch-slug>.md`. Branch slugs lowercase the branch and replace `/` with `-`.
 
-## Installation
-
-Requires Node.js 18 or newer.
-
-```bash
-# Global install — exposes the `convoptics` command
-npm install -g convoptics
-
-# Or run on demand without installing
-npx convoptics --help
-```
-
-### From source
-
-```bash
-git clone https://github.com/brenoneill/convoptics.git && cd convoptics
-npm install
-npm link        # optional: exposes `convoptics` globally from your checkout
-```
-
-Runtime dependencies:
-- [`commander`](https://www.npmjs.com/package/commander) for argv parsing.
-- [`better-sqlite3`](https://www.npmjs.com/package/better-sqlite3) to read
-  Cursor's SQLite databases. This is a native module; `npm install` will
-  download a prebuilt binary for common platforms or compile from source if
-  needed (which requires Python + a C++ toolchain).
-
-## Usage
-
-```bash
-convoptics [filters...] [options]
-```
-
-A `tool:` filter is required; everything else is optional.
-
-### Filters
-
-| Key       | Operator(s)            | Meaning                                                                 |
-|-----------|------------------------|-------------------------------------------------------------------------|
-| `tool`    | `:` `=`                | Required. One of `claude-code` or `cursor`.                             |
-| `branch`  | `:` `=`                | Exact branch name or glob (`*` matches one path segment, `**` matches across `/`). Case-insensitive. For Cursor this is the branch when the session was created; it does not track later branch switches. |
-| `cwd`     | `:` `=`                | Case-insensitive substring of the session's working directory.          |
-| `project` | `:` `=`                | Exact match of the project folder basename (the last path segment of `cwd`, e.g. `projectA` for `/Users/bren/projectA`). Use `cwd:` for a case-insensitive substring match on the full path. |
-| `session` | `:` `=`                | Session-id prefix match.                                                |
-| `version` | `:` `=`                | Exact Claude Code version string. Not supported for `tool:cursor` (no per-session client version is recorded). |
-| `date`    | `:` `=` `>` `>=` `<` `<=` | ISO date (`YYYY-MM-DD`). Comparisons use the session's `startedAt`.  |
-| `diffs`   | `:` `=`                | `diffs` (default) keeps full file-edit content; `no-diffs` redacts file edits to a placeholder so transcripts can be shared without leaking source. For Claude Code this targets `Edit`/`MultiEdit`/`Write`/`NotebookEdit` tool inputs; for Cursor it targets the per-bubble `editTrailContexts`, `fileDiffTrajectories`, `gitDiffs`, `humanChanges`, `diffsSinceLastApply`, and `assistantSuggestedDiffs` fields. |
-
-Repeating a key creates an OR: `branch:main branch:feature/*` matches sessions on
-either branch. Different keys combine with AND.
-
-### Options
-
-| Flag                | Description                                              |
-|---------------------|----------------------------------------------------------|
-| `--root <path>`     | Override the tool's data root. Default for `tool:claude-code` is `~/.claude/projects`. Default for `tool:cursor` is `~/Library/Application Support/Cursor/User` on macOS, `~/.config/Cursor/User` on Linux, `%APPDATA%/Cursor/User` on Windows. |
-| `--out <dir>`       | Override the output directory (default: `~/Downloads/convos-<timestamp>`). |
-| `--dry-run`         | List matches without writing files.                      |
-| `--json`            | Emit raw session data to stdout instead of Markdown. For Claude Code, the original JSONL; for Cursor, one JSON object per line with session metadata. |
-| `--limit <n>`       | Stop after N matches.                                    |
-| `--full`            | Do not truncate large tool results in the Markdown output. |
-| `--output-only`     | Print a Markdown token + cost summary table to stdout. Skips writing transcripts. **Claude Code only** — Cursor sessions do not record reliable token counts, so this flag is rejected with `tool:cursor`. |
-| `-v`, `--verbose`   | Show scan progress on stderr.                            |
-
-### Examples
-
-```bash
-# Everything on `working` in the last 2 days (today = 2026-05-14)
-convoptics tool:claude-code branch:working date>=2026-05-12
-
-# All feature branches, a single day
-convoptics tool:claude-code 'branch:feature/*' date:2026-05-12
-
-# A specific session prefix, full tool output, custom out dir
-convoptics tool:claude-code session:a1b2 --full --out ./payments-debug
-
-# Preview without writing anything
-convoptics tool:claude-code branch:main --dry-run -v
-
-# Pipe raw JSONL to another tool
-convoptics tool:claude-code branch:working --json | jq '.message.role'
-
-# Share a session externally without exposing source code
-convoptics tool:claude-code session:a1b2 diffs:no-diffs
-
-# Just see how many tokens / how much money a query covers (no files written)
-convoptics tool:claude-code branch:working date>=2026-05-12 --output-only
-
-# All Cursor sessions for a project, with secrets in edits redacted
-convoptics tool:cursor cwd:projectA diffs:no-diffs
-```
-
-> **Shell quoting.** Quote glob patterns (`'branch:feature/*'`) so the shell
-> does not expand `*`. Quote any token using `>`, `>=`, `<`, or `<=` (e.g.
-> `'date>=2026-05-12'`) — otherwise zsh/bash treat it as an output redirection.
-> Tokens using `:` or `=` are safe unquoted.
-
-## How it works
-
-Each tool has its own scanner + exporter under `src/<tool>/`. The CLI parses
-the query, picks the adapter based on `tool:`, and pipes sessions through a
-shared matcher into the adapter's exporter.
-
-```
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│ scanner  │ -> │  query   │ -> │ matcher  │ -> │ exporter │
-│ (per     │    │          │    │          │    │ (per     │
-│  tool)   │    │ parse    │    │ filter   │    │  tool)   │
-└──────────┘    │ argv     │    │ spec     │    └──────────┘
-                │ into     │    │ applied  │       per-session
-                │ a spec   │    │ to each  │       Markdown +
-                └──────────┘    │ session  │       index
-                                └──────────┘
-```
-
-**Claude Code** writes one `.jsonl` file per session into
-`~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`. The Claude Code scanner
-streams those files line-by-line, extracting metadata only; the exporter
-re-streams them to render Markdown.
-
-**Cursor** stores sessions across SQLite databases: a global
-`globalStorage/state.vscdb` holds session headers (`composerData:<uuid>`) and
-individual message bubbles (`bubbleId:<uuid>:<bubbleId>`), and one
-`workspaceStorage/<hash>/state.vscdb` per workspace holds the registry that
-joins each composer to its `cwd` (via the sibling `workspace.json`) and
-`createdOnBranch`. The Cursor scanner reads the workspace registries first to
-build that lookup, then walks the global DB; the exporter re-opens the global
-DB to load bubbles in conversation order. See
-[docs/cursor-schema.md](docs/cursor-schema.md) for the on-disk layout this
-adapter is pinned against.
-
-### Modules
-
-- [src/cli.js](src/cli.js) — argv parsing, adapter dispatch, output. Uses a
-  small in-process concurrency limiter (`pAll`, default 8) to export sessions
-  in parallel.
-- [src/query.js](src/query.js) — `parseQuery(argv)` turns tokens like
-  `branch:main` and `date>=2026-05-01` into a structured filter spec. Repeated
-  keys accumulate into arrays (OR). Validates keys, operators, the required
-  `tool` filter, and rejects per-tool-incompatible keys.
-- [src/matcher.js](src/matcher.js) — `match(filter, session)` applies the spec.
-  Tool-agnostic: operates on the common session shape that every adapter
-  yields. Branch globs are compiled to anchored, case-insensitive regexes:
-  `*` becomes `[^/]*`, `**` becomes `.*`, and regex metacharacters in the rest
-  of the pattern are escaped.
-- [src/claude-code/scanner.js](src/claude-code/scanner.js) — async generator.
-  Streams every `.jsonl` under `~/.claude/projects` with `readline`, extracting
-  only metadata (`sessionId`, `cwd`, `gitBranch`, `version`, `startedAt`,
-  `endedAt`, `summary`, `messageCount`, `malformedCount`, plus per-model token
-  usage). Full message content is never buffered.
-- [src/claude-code/exporter.js](src/claude-code/exporter.js) — for each match,
-  re-streams the JSONL and writes a Markdown transcript. Writes go to a `.tmp`
-  file first and are renamed atomically on success, so an interrupted run
-  never leaves partial exports.
-- [src/claude-code/pricing.js](src/claude-code/pricing.js) — USD-per-million
-  pricing table for `--output-only` (Claude Code only).
-- [src/cursor/scanner.js](src/cursor/scanner.js) — opens each
-  `workspaceStorage/<hash>/state.vscdb` read-only with `better-sqlite3`, builds
-  a `composerId → {cwd, branch, name}` registry, then streams
-  `composerData:<uuid>` rows from the global DB. Token counts are emitted as
-  zero — Cursor's per-bubble `tokenCount` is unreliable (~96% report zero).
-- [src/cursor/exporter.js](src/cursor/exporter.js) — re-opens the global DB,
-  loads `bubbleId:<sessionId>:*` rows for the session, orders them by the
-  header's `conversation[]` cache (with leftover bubbles appended), and
-  renders each `type:1`/`type:2` bubble as Markdown. Same atomic
-  `.tmp` → rename pattern as the Claude Code exporter. Warns to stderr if any
-  bubble has an unexpected schema version (`_v` ≠ 3).
-
-### Filename scheme
-
-Each export is named `<YYYY-MM-DD>_<sessionId[:8]>_<branch-slug>.md`.
-Branch slugs lowercase the branch and replace `/` with `-`. If the same name
-already exists, a numeric suffix (`_2`, `_3`, …) is appended.
-
-### Output format
-
-Each Markdown file starts with quoted YAML frontmatter, followed by the
-conversation grouped by role:
+Each Markdown file starts with quoted YAML frontmatter, followed by the conversation grouped by role:
 
 ```markdown
 ---
@@ -236,17 +188,66 @@ Please refactor the payment handler.
 Sure, I will update the handler.
 ```
 
-Token counts are summed across every assistant turn that reports a `usage`
-block in the source JSONL.
+Tool calls render as fenced blocks:
 
-### Token usage and cost (`--output-only`)
+````markdown
+```tool:git
+{ "command": "status" }
+```
 
-> **Claude Code only.** Cursor stores per-bubble `tokenCount` values that are
-> `{0,0}` for ~96% of assistant bubbles, so cost reporting would be misleading.
-> The flag is rejected with `tool:cursor` until this changes upstream.
+```result
+All tests passed.
+```
+````
 
-`--output-only` skips writing Markdown and instead prints a Markdown report to
-stdout: one row per matching session, followed by a totals table.
+Tool results longer than 4 KB are truncated with a `… [N more chars truncated]` marker — pass `--full` to keep them. Sidechain messages get a `### sidechain` heading. Consecutive same-role messages share one heading.
+
+`_index.md` is a table of every file in match order (filename, date, branch, summary).
+
+---
+
+## Options
+
+| Flag                | Description                                              |
+|---------------------|----------------------------------------------------------|
+| `--out <dir>`       | Override the output directory. Default: `~/Downloads/chats-<timestamp>`. |
+| `--root <path>`     | Override the tool's data root. Default for `tool:claude-code` is `~/.claude/projects`. For `tool:cursor`: `~/Library/Application Support/Cursor/User` (macOS), `~/.config/Cursor/User` (Linux), `%APPDATA%/Cursor/User` (Windows). |
+| `--dry-run`         | List matches without writing files. |
+| `--json`            | Emit raw session data to stdout instead of Markdown. Claude Code: original JSONL. Cursor: one JSON object per line. |
+| `--limit <n>`       | Stop after N matches. |
+| `--full`            | Don't truncate large tool results. |
+| `--output-only`     | Print a Markdown token + cost summary table to stdout. Skips writing transcripts. **Claude Code only.** |
+| `-v`, `--verbose`   | Show scan progress on stderr. |
+
+---
+
+## Advanced
+
+### Redacting diffs before sharing
+
+`diffs:no-diffs` replaces file-edit tool inputs (`Edit`, `MultiEdit`, `Write`, `NotebookEdit` for Claude Code; `editTrailContexts`, `fileDiffTrajectories`, `gitDiffs`, `humanChanges`, `diffsSinceLastApply`, `assistantSuggestedDiffs` for Cursor) with a one-line summary so you can share a transcript without leaking source code:
+
+```bash
+chat-grabber tool:claude-code session:a1b2 diffs:no-diffs
+```
+
+````markdown
+```tool:Edit
+[diff redacted: 4 lines added, 3 lines removed]
+```
+````
+
+Other tool calls and results are unchanged. Token totals still appear in the frontmatter.
+
+### Token and cost reports (`--output-only`)
+
+> **Claude Code only.** Cursor's per-bubble `tokenCount` is `{0,0}` for ~96% of assistant bubbles, so cost reporting would be misleading and the flag is rejected with `tool:cursor`.
+
+```bash
+chat-grabber tool:claude-code 'date>=2026-05-12' --output-only
+```
+
+Skips writing Markdown and prints a Markdown report instead — one row per session, plus totals:
 
 ```text
 # Session usage
@@ -266,75 +267,75 @@ stdout: one row per matching session, followed by a totals table.
 | cost (USD) | $0.66 |
 ```
 
-The `model` column shows each session's *dominant* model — the one with the
-most input + output tokens — and appends `(+N)` if other models also appeared
-in that session. Cost is computed per-model and summed.
+The `model` column shows each session's *dominant* model — the one with the most input + output tokens — and appends `(+N)` if other models also appeared. Cost is computed per-model and summed.
 
-Redirect to a file for sharing: `convoptics ... --output-only > usage.md`.
+Redirect to a file for sharing: `chat-grabber ... --output-only > usage.md`.
 
-#### Pricing table
+Rates live in [src/claude-code/pricing.js](src/claude-code/pricing.js) as USD per million tokens. Model resolution does a longest-prefix match, so dated variants like `claude-opus-4-7-20251022` map to the `claude-opus-4-7` row. Unknown models still report tokens but their cost is excluded and a stderr warning is printed.
 
-Rates live in [src/pricing.js](src/pricing.js) as USD per million tokens.
-Model resolution does a longest-prefix match, so dated variants like
-`claude-opus-4-7-20251022` map to the `claude-opus-4-7` row. If a session's
-model isn't in the table, its tokens are still reported but its cost is
-excluded and a warning is printed to stderr. Add new models by appending to
-the `PRICING` object.
+### Piping raw data
 
-### Redacting diffs
-
-Use `diffs:no-diffs` to share a transcript without leaking the source you
-edited. File-edit tool calls (`Edit`, `MultiEdit`, `Write`, `NotebookEdit`)
-have their inputs replaced by a one-line summary:
-
-````markdown
-```tool:Edit
-[diff redacted: 4 lines added, 3 lines removed]
-```
-````
-
-Other tool calls and their results are unchanged. Token totals in the
-frontmatter are still emitted.
-
-Tool use and tool results render as fenced blocks:
-
-````markdown
-```tool:git
-{
-  "command": "status"
-}
+```bash
+# JSONL for Claude Code
+chat-grabber tool:claude-code branch:working --json | jq '.message.role'
 ```
 
-```result
-All tests passed.
+### Preview without writing
+
+```bash
+chat-grabber tool:claude-code branch:main --dry-run -v
 ```
-````
 
-Sidechain messages are prefixed with a `### sidechain` heading. Consecutive
-messages from the same role share a single role heading.
+---
 
-### Truncation
+## Architecture (for contributors)
 
-Tool results longer than 4 KB are truncated with a trailing
-`… [N more chars truncated]` marker. Pass `--full` to disable this.
+Each tool has its own scanner + exporter under `src/<tool>/`. The CLI parses the query, picks the adapter based on `tool:`, and pipes sessions through a shared matcher into the adapter's exporter.
 
-### Index file
+**Claude Code** writes one `.jsonl` file per session into `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`. The scanner streams those files line-by-line, extracting metadata only; the exporter re-streams them to render Markdown.
 
-Every run also writes `_index.md` with a table of `filename | date | branch |
-summary` rows in match order.
+**Cursor** stores sessions across SQLite databases: a global `globalStorage/state.vscdb` holds session headers (`composerData:<uuid>`) and individual message bubbles (`bubbleId:<uuid>:<bubbleId>`); one `workspaceStorage/<hash>/state.vscdb` per workspace holds the registry that joins each composer to its `cwd` and `createdOnBranch`. The Cursor scanner reads workspace registries first to build that lookup, then walks the global DB; the exporter re-opens the global DB to load bubbles in conversation order. See [docs/cursor-schema.md](docs/cursor-schema.md) for the on-disk layout.
 
-### Errors and resilience
+### Modules
 
-- Missing projects root → exit code `2` with a clear message.
-- Export failure → exit code `3`; the partial `.tmp` file is removed.
-- Invalid query tokens → exit code `1` with the offending token in the message.
-- Malformed JSONL lines are counted (`malformedCount`) and skipped; `--verbose`
-  prints the per-file count.
+- [src/cli.js](src/cli.js) — argv parsing, adapter dispatch, output. In-process concurrency limiter (`pAll`, default 8) for parallel export.
+- [src/query.js](src/query.js) — `parseQuery(argv)` turns tokens into a structured filter spec. Repeated keys accumulate into arrays (OR). Validates keys, operators, the required `tool` filter, and per-tool-incompatible keys.
+- [src/matcher.js](src/matcher.js) — `match(filter, session)` applies the spec. Tool-agnostic; operates on the common session shape every adapter yields. Branch globs compile to anchored, case-insensitive regexes: `*` → `[^/]*`, `**` → `.*`.
+- [src/claude-code/scanner.js](src/claude-code/scanner.js) — async generator. Streams every `.jsonl` under `~/.claude/projects` with `readline`, extracting only metadata. Full message content is never buffered.
+- [src/claude-code/exporter.js](src/claude-code/exporter.js) — for each match, re-streams the JSONL and writes Markdown. Writes go to `.tmp` first and are renamed atomically — an interrupted run never leaves partial exports.
+- [src/claude-code/pricing.js](src/claude-code/pricing.js) — USD-per-million pricing table for `--output-only`.
+- [src/cursor/scanner.js](src/cursor/scanner.js) — opens each `workspaceStorage/<hash>/state.vscdb` read-only with `better-sqlite3`, builds a `composerId → {cwd, branch, name}` registry, then streams `composerData:<uuid>` rows from the global DB. Token counts are emitted as zero.
+- [src/cursor/exporter.js](src/cursor/exporter.js) — re-opens the global DB, loads `bubbleId:<sessionId>:*` rows, orders them by the header's `conversation[]` cache, renders each `type:1`/`type:2` bubble as Markdown. Same atomic `.tmp` → rename pattern. Warns to stderr if any bubble has `_v` ≠ 3.
 
-## Project layout
+### Adding a new tool adapter
+
+Create `src/<tool>/scanner.js` (async generator yielding the common session shape) and `src/<tool>/exporter.js` (writes Markdown for one session). Register the adapter in the `ADAPTERS` map in [src/cli.js](src/cli.js), add the tool name to `VALID_TOOLS` in [src/query.js](src/query.js), and declare any per-tool incompatible filter keys in `TOOL_UNSUPPORTED_KEYS`. The matcher and query layers are tool-agnostic.
+
+### From source
+
+```bash
+git clone https://github.com/brenoneill/chat-grabber.git && cd chat-grabber
+npm install
+npm link        # optional: exposes `chat-grabber` globally from your checkout
+npm test
+```
+
+The test suite uses Node's built-in `node:test` runner against fixtures under [test/fixtures/projects/](test/fixtures/projects/).
+
+### Errors and exit codes
+
+| Code | Meaning |
+|------|---------|
+| `1`  | Invalid query token. |
+| `2`  | Missing projects/data root. |
+| `3`  | Export failure (partial `.tmp` is removed). |
+
+Malformed JSONL lines are counted (`malformedCount`) and skipped; `--verbose` prints the per-file count.
+
+### Project layout
 
 ```
-bin/convoptics.js               # entry point shim
+bin/chat-grabber.js             # entry point shim
 src/cli.js                      # argv → adapter dispatch
 src/query.js                    # parseQuery
 src/matcher.js                  # tool-agnostic match + glob compilation
@@ -348,28 +349,7 @@ test/                           # node:test suites + fixtures
 .github/workflows/ci.yml        # Node 18 + 20 matrix
 ```
 
-## Running the tests
-
-```bash
-npm test
-```
-
-The suite uses Node's built-in `node:test` runner against fixtures under
-[test/fixtures/projects/](test/fixtures/projects/).
-
-## Adding support for other tools
-
-The `tool:` key dispatches to an adapter under `src/<tool>/`. Each adapter
-ships its own `scanner.js` (an async generator yielding the common session
-shape — see the Modules section) and `exporter.js` (writing Markdown for one
-session into the output directory). Register the adapter in the `ADAPTERS`
-map in [src/cli.js](src/cli.js), add the tool name to `VALID_TOOLS` in
-[src/query.js](src/query.js), and declare any per-tool incompatible filter
-keys in `TOOL_UNSUPPORTED_KEYS`. The matcher and query layers are
-tool-agnostic and don't need changes.
-
-Two adapters ship today: `claude-code` (JSONL files under `~/.claude/projects`)
-and `cursor` (SQLite databases under Cursor's user-data directory).
+---
 
 ## License
 

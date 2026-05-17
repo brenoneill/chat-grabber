@@ -8,7 +8,7 @@ import { exportSession } from '../src/claude-code/exporter.js';
 const fixturePath = path.join('test', 'fixtures', 'projects', '-Users-bren-projectA', 'session-a1b2.jsonl');
 
 test('exportSession renders markdown transcript and writes file', async () => {
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-export-'));
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-export-'));
   const meta = {
     path: path.resolve(fixturePath),
     sessionId: 'a1b2c3d4',
@@ -29,7 +29,7 @@ test('exportSession renders markdown transcript and writes file', async () => {
 });
 
 test('exportSession truncates tool results over 4KB unless full is true', async () => {
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-export-'));
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-export-'));
   const huge = 'x'.repeat(5000);
   const jsonl = JSON.stringify({
     type: 'assistant',
@@ -58,7 +58,7 @@ test('exportSession truncates tool results over 4KB unless full is true', async 
 });
 
 test('exportSession redacts Edit/Write tool inputs when noDiffs is true', async () => {
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-export-'));
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-export-'));
   const oldString = 'line1\nline2\nline3';
   const newString = 'line1\nLINE2\nline3\nline4';
   const secret = 'SECRET_API_KEY=hunter2';
@@ -100,7 +100,7 @@ test('exportSession redacts Edit/Write tool inputs when noDiffs is true', async 
 });
 
 test('exportSession writes token totals to frontmatter', async () => {
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-export-'));
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-export-'));
   const meta = {
     path: path.resolve(fixturePath),
     sessionId: 'tok00001',
@@ -122,7 +122,7 @@ test('exportSession writes token totals to frontmatter', async () => {
 });
 
 test('exportSession appends suffix for filename collisions', async () => {
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'convoptics-export-'));
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-grabber-export-'));
   const meta1 = {
     path: path.resolve(fixturePath),
     sessionId: 'abcd1234aaaa',
